@@ -1,0 +1,56 @@
+# Development tasks for mise-tasks.el — driven by [mise](https://mise.jdx.dev),
+# the very tool this package integrates with. Run `mise tasks` to list, or
+# `mise run <task>` to invoke. Bare `mise run` runs the default (check + test).
+
+[env]
+EMACS = "emacs"
+
+[tasks.default]
+description = "Byte-compile, checkdoc, and run tests"
+depends = ["check", "test"]
+
+[tasks.check]
+description = "Byte-compile + checkdoc"
+depends = ["compile", "checkdoc"]
+
+[tasks.compile]
+description = "Byte-compile the package (errors on warnings)"
+sources = ["mise-tasks.el"]
+outputs = ["mise-tasks.elc"]
+run = '''
+$EMACS -Q --batch -L . -L tests \
+  --eval "(setq byte-compile-error-on-warn t)" \
+  -f batch-byte-compile mise-tasks.el
+'''
+
+[tasks.checkdoc]
+description = "Run checkdoc on the package"
+run = '''
+$EMACS -Q --batch -L . -L tests \
+  --eval "(setq checkdoc-arguments-in-order-flag nil)" \
+  --eval "(checkdoc-file \"mise-tasks.el\")"
+'''
+
+[tasks.lint]
+description = "package-lint (auto-installs from MELPA)"
+run = '''
+$EMACS -Q --batch -L . -L tests \
+  --eval "(require 'package)" \
+  --eval "(add-to-list 'package-archives '(\"melpa\" . \"https://melpa.org/packages/\"))" \
+  --eval "(package-initialize)" \
+  --eval "(unless (package-installed-p 'package-lint) (package-refresh-contents) (package-install 'package-lint))" \
+  -f package-lint-batch-and-exit mise-tasks.el
+'''
+
+[tasks.test]
+description = "Run ERT tests"
+run = '''
+set -- tests/*.el
+$EMACS -Q --batch -L . -L tests \
+  $(printf -- '-l %s ' "$@") \
+  -f ert-run-tests-batch-and-exit
+'''
+
+[tasks.clean]
+description = "Remove byte-compiled files"
+run = "rm -f *.elc tests/*.elc"

@@ -1,0 +1,7 @@
+*.elc
+/.eldev/
+/.cask/
+/.eask/
+*-autoloads.el
+*-pkg.el
+claude_docs/
