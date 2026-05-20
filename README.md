@@ -22,9 +22,16 @@ Not yet on MELPA. For now, clone and add to `load-path`:
 
 ### Spacemacs
 
+You can add `mise-tasks` into `dotspacemacs-additional-packages` section:
+
+```elisp
+  (mise-tasks :location (recipe :fetcher github :repo "klochowicz/mise-tasks.el")
+```
+
+and, inside your user-config, configure desired keybindings (example below):
+
 ```elisp
 (defun dotspacemacs/user-config ()
-  (add-to-list 'load-path (expand-file-name "~/git/mise-tasks"))
   (require 'mise-tasks)
   (spacemacs/declare-prefix "pm" "mise")
   (spacemacs/set-leader-keys
