@@ -447,6 +447,28 @@ inspects the `face' text property at the first match of NEEDLE."
                              #'string-match-p)
               'mise-tasks-lock-mode)))
 
+(ert-deftest mise-tasks-test-lock-auto-mode-alist-is-strict ()
+  ;; The pattern must match every place mise writes a lockfile but never
+  ;; hijack unrelated `.lock' files (Cargo.lock, flake.lock, ...).  mise always
+  ;; names the file `mise.lock'/`mise.local.lock' regardless of the config
+  ;; filename, including in subdirectories (e.g. `mise/config.toml' locks to
+  ;; `mise/mise.lock').
+  (let ((regexp (car (rassq 'mise-tasks-lock-mode auto-mode-alist))))
+    (should regexp)
+    (dolist (name '("mise.lock"
+                    "/p/mise.lock"
+                    "/p/mise.local.lock"
+                    "/p/mise/mise.lock"
+                    "/p/.config/mise/mise.lock"))
+      (should (string-match-p regexp name)))
+    (dolist (name '("/p/Cargo.lock"
+                    "/p/flake.lock"
+                    "/p/poetry.lock"
+                    "/p/yarn.lock"
+                    "/p/premise.lock"
+                    "/p/.mise.lock"))
+      (should-not (string-match-p regexp name)))))
+
 (provide 'mise-tasks-test)
 
 ;;; mise-tasks-test.el ends here
