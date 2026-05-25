@@ -1,4 +1,4 @@
-;;; mise-tasks.el --- Run mise tasks -*- lexical-binding: t; -*-
+;;; mise-tasks.el --- Run mise tasks and highlight lockfiles -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026 Mariusz Klochowicz
 
