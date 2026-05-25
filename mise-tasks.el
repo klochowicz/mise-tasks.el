@@ -45,6 +45,11 @@
 ;; added and `MISE_EXPERIMENTAL=1' is set in the subprocess environment
 ;; so mise's monorepo task discovery engages even from GUI Emacs sessions
 ;; that don't inherit the user's shell environment.
+;;
+;; When mise reports that a project's config is not trusted, discovery
+;; prompts (y/n) and, on confirmation, runs `mise trust' for the
+;; offending file before retrying — so a repository opened for the first
+;; time surfaces its tasks instead of silently appearing empty.
 
 ;;; Code:
 
@@ -263,22 +268,80 @@ project root has a mise config; otherwise walks up from
 ;;;; Calling mise
 
 (defun mise-tasks--call-mise (args cwd)
-  "Run `mise ARGS' in CWD; return (EXIT . OUTPUT).
+  "Run `mise ARGS' in CWD; return (EXIT STDOUT STDERR).
 
-OUTPUT is the captured stdout as a string.  Sets `MISE_EXPERIMENTAL' in
-the subprocess environment according to `mise-tasks-experimental-env'
-so monorepo and other experimental features engage even when the user
-runs Emacs from a GUI launcher that doesn't inherit shell env."
+STDOUT and STDERR are the captured output streams as strings.  STDERR is
+captured separately because mise reports its untrusted-config error only
+on stderr, and `mise-tasks--call-mise-trusting' needs to see it.  Sets
+`MISE_EXPERIMENTAL' in the subprocess environment according to
+`mise-tasks-experimental-env' so monorepo and other experimental
+features engage even when the user runs Emacs from a GUI launcher that
+doesn't inherit shell env."
   (let* ((default-directory (or cwd default-directory))
          (process-environment
           (if mise-tasks-experimental-env
               (cons (concat "MISE_EXPERIMENTAL=" mise-tasks-experimental-env)
                     process-environment)
-            process-environment)))
-    (with-temp-buffer
-      (let ((exit (apply #'call-process mise-tasks-executable nil
-                         (list (current-buffer) nil) nil args)))
-        (cons exit (buffer-string))))))
+            process-environment))
+         (stderr-file (make-temp-file "mise-tasks-stderr")))
+    (unwind-protect
+        (with-temp-buffer
+          (let ((exit (apply #'call-process mise-tasks-executable nil
+                             (list (current-buffer) stderr-file) nil args)))
+            (list exit
+                  (buffer-string)
+                  (with-temp-buffer
+                    (insert-file-contents stderr-file)
+                    (buffer-string)))))
+      (delete-file stderr-file))))
+
+;;;; Config trust
+
+(defun mise-tasks--call-mise-trusting (args root)
+  "Run `mise ARGS' in ROOT, resolving the untrusted-config flow.
+
+Returns (EXIT STDOUT STDERR) like `mise-tasks--call-mise'.  When mise
+reports that a config file is not trusted, prompt via `y-or-n-p' and, on
+confirmation, run `mise trust' for the offending file before retrying.
+Trusting the nearest config can reveal the next untrusted file up the
+tree, so this retries until the error clears, the user declines
+\(signalling `user-error'), or a safety cap is reached."
+  (let ((max-attempts 10)
+        (attempts 0))
+    (catch 'result
+      (while t
+        (pcase-let* ((result (mise-tasks--call-mise args root))
+                     (`(,exit ,_ ,stderr) result)
+                     (path (mise-tasks--untrusted-config exit stderr)))
+          (when (or (null path) (>= attempts max-attempts))
+            (throw 'result result))
+          (unless (mise-tasks--confirm-trust path)
+            (user-error "Cannot list mise tasks: config not trusted (%s)" path))
+          (mise-tasks--trust-config path root)
+          (setq attempts (1+ attempts)))))))
+
+(defun mise-tasks--untrusted-config (exit stderr)
+  "Return the untrusted config path mise named in STDERR, or nil.
+
+Non-nil only when EXIT is non-zero and STDERR carries mise's trust error
+naming the offending file.  Other failures (e.g. malformed TOML) return
+nil so they fall through unchanged."
+  (and (not (zerop exit))
+       stderr
+       (string-match "Config files in \\(.*\\) are not trusted" stderr)
+       (match-string 1 stderr)))
+
+(defun mise-tasks--confirm-trust (path)
+  "Ask whether to trust the mise config at PATH; return non-nil to proceed."
+  (y-or-n-p (format "Mise config not trusted: %s -- trust it? " path)))
+
+(defun mise-tasks--trust-config (path root)
+  "Trust the mise config at PATH by running `mise trust PATH' in ROOT.
+Signal `user-error' when mise fails to trust the file."
+  (pcase-let ((`(,exit ,_ ,stderr) (mise-tasks--call-mise (list "trust" path) root)))
+    (unless (zerop exit)
+      (user-error "Mise trust failed for %s: %s"
+                  path (string-trim (or stderr ""))))))
 
 ;;;; Task discovery
 
@@ -303,8 +366,10 @@ Each task is a plist with keys:
 
 (defun mise-tasks--parse-json-output (args cwd)
   "Run `mise ARGS' in CWD and parse JSON output into task plists.
-Returns nil on parse failure so callers can fall back."
-  (pcase-let ((`(,exit . ,output) (mise-tasks--call-mise args cwd)))
+Resolves the untrusted-config flow first (see
+`mise-tasks--call-mise-trusting').  Returns nil on parse failure so
+callers can fall back."
+  (pcase-let ((`(,exit ,output ,_) (mise-tasks--call-mise-trusting args cwd)))
     (when (zerop exit)
       (condition-case _
           (mapcar #'mise-tasks--json-to-plist
@@ -336,7 +401,7 @@ Returns nil on parse failure so callers can fall back."
 Passes `--all' when MONOREPO is non-nil."
   (let* ((args (append '("tasks" "--no-header" "--name-only")
                        (and monorepo '("--all")))))
-    (pcase-let ((`(,_ . ,output) (mise-tasks--call-mise args root)))
+    (pcase-let ((`(,_ ,output ,_) (mise-tasks--call-mise args root)))
       (mapcar (lambda (n)
                 (list :name n :description "" :source nil :global nil))
               (split-string output "\n" t "[ \t]+")))))

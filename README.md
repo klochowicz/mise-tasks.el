@@ -8,6 +8,7 @@ Complements the existing env-injection packages (`mise.el`, `gmise`, `emacs-mise
 
 - **Task discovery** via `mise tasks --json`, including global tasks (`~/.config/mise/config.toml`), project tasks (`mise.toml`), and gitignored override tasks (`mise.local.toml`).
 - **Monorepo support** — auto-detects `experimental_monorepo_root = true` and engages mise's experimental monorepo discovery (including setting `MISE_EXPERIMENTAL=1` in the subprocess env, which GUI Emacs sessions on macOS otherwise miss).
+- **Trust prompt** — when a project's config is not trusted yet (e.g. a repo opened for the first time), discovery asks `y`/`n` and, on confirmation, runs `mise trust` before retrying instead of silently showing no tasks.
 - **Process management** — runs through `compile`, so `C-c C-k` / `M-x kill-compilation` works; `mise-tasks-kill` adds a SIGINT-then-SIGKILL escalation.
 - **Last-task memory** — `mise-tasks-run-last` re-runs the last task you picked in this project.
 
@@ -75,6 +76,8 @@ Opt in once with `(mise-tasks-projectile-mode 1)`; disable with `(mise-tasks-pro
 ## Discovery
 
 Calls `mise tasks --json --no-header` once at the project root. When `experimental_monorepo_root = true` is found in the root config, also passes `--all` and sets `MISE_EXPERIMENTAL=1` in the subprocess env so mise's monorepo task discovery engages even in GUI Emacs sessions that don't inherit your shell environment.
+
+If mise reports that the config is not trusted, discovery prompts `y`/`n` and, on confirmation, runs `mise trust` for the named config file, then retries. Because trusting the nearest config can reveal the next untrusted one further up the tree, the prompt repeats until everything needed is trusted (one prompt per file). Declining raises a clear error rather than reporting an empty task list.
 
 ## Why this package exists
 

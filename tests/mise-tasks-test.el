@@ -287,6 +287,96 @@ CWD-MATCH is a substring matched against the call's CWD."
           (mise-tasks-projectile-mode -1))
       (fmakunbound 'projectile-compile-project))))
 
+;;;; Trust flow (untrusted-config detection)
+
+(ert-deftest mise-tasks-test-untrusted-config-extracts-path ()
+  ;; The trust error names the offending config on stderr; we must surface
+  ;; that exact path so we can `mise trust' it.
+  (let ((stderr (concat
+                 "mise ERROR error parsing config file: /p/mise.toml\n"
+                 "mise ERROR Config files in /p/mise.toml are not trusted.\n"
+                 "Trust them with `mise trust'.\n")))
+    (should (equal (mise-tasks--untrusted-config 1 stderr) "/p/mise.toml"))))
+
+(ert-deftest mise-tasks-test-untrusted-config-nil-on-success ()
+  ;; A zero exit is never an untrusted error, regardless of stderr text.
+  (should-not (mise-tasks--untrusted-config
+               0 "Config files in /p/mise.toml are not trusted.")))
+
+(ert-deftest mise-tasks-test-untrusted-config-nil-on-other-error ()
+  ;; A non-trust parse failure must not be mistaken for an untrusted config.
+  (should-not (mise-tasks--untrusted-config 1 "mise ERROR invalid TOML at line 3")))
+
+(ert-deftest mise-tasks-test-untrusted-config-nil-on-empty-stderr ()
+  (should-not (mise-tasks--untrusted-config 1 ""))
+  (should-not (mise-tasks--untrusted-config 1 nil)))
+
+;;;; Trust flow (prompt + trust + retry loop)
+
+(ert-deftest mise-tasks-test-trusting-passes-through-on-success ()
+  ;; When mise succeeds, there is no prompt and no `mise trust' call —
+  ;; just the result.
+  (let ((prompted nil) (trusted nil))
+    (cl-letf (((symbol-function 'mise-tasks--call-mise)
+               (lambda (args _root)
+                 (if (equal (car args) "trust")
+                     (progn (setq trusted t) (list 0 "" ""))
+                   (list 0 "[]" ""))))
+              ((symbol-function 'y-or-n-p)
+               (lambda (&rest _) (setq prompted t) t)))
+      (should (equal (mise-tasks--call-mise-trusting '("tasks" "--json") "/r/")
+                     (list 0 "[]" "")))
+      (should-not prompted)
+      (should-not trusted))))
+
+(ert-deftest mise-tasks-test-trusting-trusts-and-retries-on-confirm ()
+  ;; Untrusted -> confirm -> `mise trust <path>' -> retry succeeds.
+  (let ((trusted-path nil)
+        (responses (list
+                    (list 1 "" "mise ERROR Config files in /r/mise.toml are not trusted.")
+                    (list 0 "[]" ""))))
+    (cl-letf (((symbol-function 'mise-tasks--call-mise)
+               (lambda (args _root)
+                 (if (equal (car args) "trust")
+                     (progn (setq trusted-path (cadr args)) (list 0 "" ""))
+                   (pop responses))))
+              ((symbol-function 'y-or-n-p) (lambda (&rest _) t)))
+      (should (equal (mise-tasks--call-mise-trusting '("tasks" "--json") "/r/")
+                     (list 0 "[]" "")))
+      (should (equal trusted-path "/r/mise.toml")))))
+
+(ert-deftest mise-tasks-test-trusting-signals-on-decline ()
+  ;; Declining the prompt must raise a clear error, not silently return
+  ;; "no tasks", and must not run `mise trust'.
+  (let ((trusted nil))
+    (cl-letf (((symbol-function 'mise-tasks--call-mise)
+               (lambda (args _root)
+                 (if (equal (car args) "trust")
+                     (progn (setq trusted t) (list 0 "" ""))
+                   (list 1 "" "mise ERROR Config files in /r/mise.toml are not trusted."))))
+              ((symbol-function 'y-or-n-p) (lambda (&rest _) nil)))
+      (should-error (mise-tasks--call-mise-trusting '("tasks" "--json") "/r/")
+                    :type 'user-error)
+      (should-not trusted))))
+
+(ert-deftest mise-tasks-test-trusting-handles-nested-untrusted ()
+  ;; Trusting the nearest config reveals the next one up the tree; the
+  ;; loop must resolve both with one prompt each.
+  (let ((trust-calls 0)
+        (responses (list
+                    (list 1 "" "mise ERROR Config files in /r/sub/mise.toml are not trusted.")
+                    (list 1 "" "mise ERROR Config files in /r/mise.toml are not trusted.")
+                    (list 0 "[]" ""))))
+    (cl-letf (((symbol-function 'mise-tasks--call-mise)
+               (lambda (args _root)
+                 (if (equal (car args) "trust")
+                     (progn (setq trust-calls (1+ trust-calls)) (list 0 "" ""))
+                   (pop responses))))
+              ((symbol-function 'y-or-n-p) (lambda (&rest _) t)))
+      (should (equal (mise-tasks--call-mise-trusting '("tasks" "--json") "/r/")
+                     (list 0 "[]" "")))
+      (should (= trust-calls 2)))))
+
 (provide 'mise-tasks-test)
 
 ;;; mise-tasks-test.el ends here
