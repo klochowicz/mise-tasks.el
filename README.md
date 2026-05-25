@@ -11,6 +11,7 @@ Complements the existing env-injection packages (`mise.el`, `gmise`, `emacs-mise
 - **Trust prompt** — when a project's config is not trusted yet (e.g. a repo opened for the first time), discovery asks `y`/`n` and, on confirmation, runs `mise trust` before retrying instead of silently showing no tasks.
 - **Process management** — runs through `compile`, so `C-c C-k` / `M-x kill-compilation` works; `mise-tasks-kill` adds a SIGINT-then-SIGKILL escalation.
 - **Last-task memory** — `mise-tasks-run-last` re-runs the last task you picked in this project.
+- **Lockfile highlighting** — `mise-tasks-lock-mode` fontifies `mise.lock` / `mise.local.lock` files, emphasising the mise-specific tokens on top of the base TOML highlighting.
 
 ## Install
 
@@ -62,6 +63,22 @@ Opt in once with `(mise-tasks-projectile-mode 1)`; disable with `(mise-tasks-pro
 | `mise-tasks-run-last` | Re-run the last task in this project. |
 | `mise-tasks-list` | Tabulated browser of tasks. `RET` runs, `g` refreshes, `k` kills. |
 | `mise-tasks-kill` | SIGINT the running task; repeat to SIGKILL. |
+
+## Lockfile syntax highlighting
+
+`mise-tasks-lock-mode` is a major mode for mise lockfiles. It is registered in `auto-mode-alist` automatically, so `mise.lock` and `mise.local.lock` open with highlighting — no configuration needed.
+
+It derives from the built-in `conf-toml-mode` (a lockfile is just TOML), then layers on emphasis for the tokens unique to a lockfile:
+
+| Token | Example |
+|-------|---------|
+| `@generated` marker | `# @generated …` (flagged so you don't hand-edit) |
+| Tool name | `[[tools.`**`node`**`]]` |
+| Platform | `"platforms.`**`linux-arm64`**`"` |
+| Backend kind | `backend = "`**`core`**`:node"` |
+| Checksum algorithm | `checksum = "`**`sha256`**`:…"` |
+
+Colours come from your theme's standard font-lock faces.
 
 ## Customisation
 
