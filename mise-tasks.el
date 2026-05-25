@@ -1,4 +1,4 @@
-;;; mise-tasks.el --- Run mise tasks from Emacs -*- lexical-binding: t; -*-
+;;; mise-tasks.el --- Run mise tasks -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026 Mariusz Klochowicz
 
