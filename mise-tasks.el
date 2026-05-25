@@ -4,7 +4,7 @@
 
 ;; Author: Mariusz Klochowicz <mariusz@klochowicz.com>
 ;; Maintainer: Mariusz Klochowicz <mariusz@klochowicz.com>
-;; URL: https://github.com/klochowicz/mise-tasks
+;; URL: https://github.com/klochowicz/mise-tasks.el
 ;; Version: 0.1.0
 ;; Package-Requires: ((emacs "28.1"))
 ;; Keywords: tools, processes, mise
