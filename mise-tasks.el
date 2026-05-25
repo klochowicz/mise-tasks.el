@@ -54,6 +54,7 @@
 ;;; Code:
 
 (require 'compile)
+(require 'conf-mode)
 (require 'json)
 (require 'seq)
 (require 'subr-x)
@@ -614,6 +615,37 @@ filename to keep both selectable."
   (interactive)
   (let ((default-directory mise-tasks--list-root))
     (mise-tasks-kill)))
+
+;;;; Lockfile major mode
+
+(defvar mise-tasks-lock-font-lock-keywords
+  `(("@generated" 0 'font-lock-warning-face t)
+    ("^\\s-*\\[\\[?tools\\.\"?\\([^].\"[:space:]]+\\)"
+     1 'font-lock-function-name-face t)
+    ("\"platforms\\.\\([^].\"[:space:]]+\\)" 1 'font-lock-constant-face t)
+    ("^\\s-*backend\\s-*=\\s-*\"\\([a-z0-9_-]+\\):" 1 'font-lock-builtin-face t)
+    ("^\\s-*checksum\\s-*=\\s-*\"\\([a-z0-9]+\\):" 1 'font-lock-builtin-face t))
+  "Mise-specific font-lock rules layered on top of `conf-toml-mode'.
+
+These emphasise the tokens unique to a `mise.lock' file — the
+`@generated' marker, the tool name in `[[tools.NAME]]' headers, the
+platform identifier in `\"platforms.PLATFORM\"' keys, and the kind
+prefix of `backend' and `checksum' values — while leaving the rest of
+the TOML fontification to `conf-toml-mode'.")
+
+;;;###autoload
+(define-derived-mode mise-tasks-lock-mode conf-toml-mode "mise-lock"
+  "Major mode for mise lockfiles (`mise.lock', `mise.local.lock').
+
+Derives from `conf-toml-mode' so the file is fontified as TOML, then
+layers on the mise-specific highlights in
+`mise-tasks-lock-font-lock-keywords'."
+  (font-lock-add-keywords nil mise-tasks-lock-font-lock-keywords 'append))
+
+;;;###autoload
+(add-to-list 'auto-mode-alist
+             '("\\(?:\\`\\|/\\)mise\\(?:\\.local\\)?\\.lock\\'"
+               . mise-tasks-lock-mode))
 
 (provide 'mise-tasks)
 
